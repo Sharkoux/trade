@@ -2,9 +2,29 @@
 import { fetchCandles } from './_utilsHyperliquid'; // on factorise l'appel candleSnapshot
 
 const UNIVERSES = {
-  l2: ['OP', 'ARB', 'MNT', 'STRK', 'ZK'],
-  dex: ['UNI', 'SUSHI', 'GMX', 'APEX'],
-  bluechips: ['BTC', 'ETH', 'SOL', 'AVAX'],
+  // Layer 2 / Scaling
+  l2: ['OP', 'ARB', 'MNT', 'STRK', 'ZK', 'MATIC', 'IMX', 'METIS', 'MANTA', 'BLAST'],
+
+  // DEX / DeFi Trading
+  dex: ['UNI', 'SUSHI', 'GMX', 'APEX', 'DYDX', 'CRV', 'BAL', 'VELO', 'JUP', 'RAY'],
+
+  // Blue chips majeurs
+  bluechips: ['BTC', 'ETH', 'SOL', 'AVAX', 'BNB', 'LINK', 'DOT', 'ATOM'],
+
+  // DeFi / Lending
+  defi: ['AAVE', 'COMP', 'MKR', 'SNX', 'LDO', 'RPL', 'FXS', 'PENDLE'],
+
+  // Gaming / Metaverse
+  gaming: ['IMX', 'GALA', 'AXS', 'SAND', 'MANA', 'ILV', 'PRIME', 'PIXEL'],
+
+  // AI / Data
+  ai: ['FET', 'RNDR', 'AGIX', 'TAO', 'AR', 'FIL', 'GRT', 'OCEAN'],
+
+  // Memecoins (haute volatilité)
+  meme: ['DOGE', 'SHIB', 'PEPE', 'WIF', 'BONK', 'FLOKI', 'MEME'],
+
+  // Toutes les paires (scan complet - peut être lent)
+  all: ['BTC', 'ETH', 'SOL', 'AVAX', 'OP', 'ARB', 'MATIC', 'LINK', 'UNI', 'AAVE', 'LDO', 'MKR', 'SNX', 'CRV', 'GMX', 'DYDX', 'IMX', 'STRK', 'ZK', 'FET', 'RNDR', 'AR', 'GRT'],
 };
 
 function generatePairs(coins) {
@@ -17,7 +37,7 @@ function generatePairs(coins) {
   return pairs;
 }
 
-function computeStatsRatio(seriesA, seriesB) {
+function computeStatsRatio(seriesA, seriesB, lookbackDays = 90) {
   // seriesX = [{t, c}, ...]
   const n = Math.min(seriesA.length, seriesB.length);
   if (n < 20) return null;
@@ -42,14 +62,15 @@ function computeStatsRatio(seriesA, seriesB) {
 
   if (ratios.length < 20) return null;
 
-  // moyenne & std du ratio
-  const mean =
-    ratios.reduce((s, v) => s + v, 0) / ratios.length;
-  const variance =
-    ratios.reduce((s, v) => s + (v - mean) ** 2, 0) / (ratios.length - 1);
+  // Fenêtre glissante de 90 jours pour mean/std (cohérent avec backtest.js)
+  const lookbackPoints = Math.min(lookbackDays, ratios.length);
+  const recentRatios = ratios.slice(-lookbackPoints);
+
+  const mean = recentRatios.reduce((s, v) => s + v, 0) / recentRatios.length;
+  const variance = recentRatios.reduce((s, v) => s + (v - mean) ** 2, 0) / (recentRatios.length - 1);
   const std = Math.sqrt(variance);
 
-  // corrélation des log returns
+  // corrélation des log returns (sur toute la période pour avoir une vue long terme)
   const mA = retsA.reduce((s, v) => s + v, 0) / retsA.length;
   const mB = retsB.reduce((s, v) => s + v, 0) / retsB.length;
   let cov = 0;
@@ -67,26 +88,59 @@ function computeStatsRatio(seriesA, seriesB) {
   varB /= retsB.length;
   const corr = cov / (Math.sqrt(varA) * Math.sqrt(varB) || 1);
 
-  // simple “mean reversion score” = combien de fois le z-score revient vers 0
+  // Analyse de la réversion avec fenêtre glissante
+  // Pour chaque point, calculer z avec sa propre fenêtre de 90 jours
   let reverts = 0;
   let signals = 0;
-  for (let i = 0; i < ratios.length; i++) {
-    const z = std > 0 ? (ratios[i] - mean) / std : 0;
-    if (Math.abs(z) > 1) {
+  let totalDays = 0;
+
+  for (let i = lookbackPoints; i < ratios.length; i++) {
+    // Fenêtre glissante pour ce point
+    const windowRatios = ratios.slice(i - lookbackPoints, i);
+    const windowMean = windowRatios.reduce((s, v) => s + v, 0) / windowRatios.length;
+    const windowVar = windowRatios.reduce((s, v) => s + (v - windowMean) ** 2, 0) / (windowRatios.length - 1);
+    const windowStd = Math.sqrt(windowVar);
+
+    const z = windowStd > 0 ? (ratios[i] - windowMean) / windowStd : 0;
+
+    if (Math.abs(z) > 1.5) {
       signals++;
-      // regarde si dans les 5 jours suivants on revient vers |z| < 0.5
-      for (let j = i + 1; j < Math.min(i + 6, ratios.length); j++) {
-        const zj = std > 0 ? (ratios[j] - mean) / std : 0;
+      // regarde combien de jours pour revenir vers |z| < 0.5
+      for (let j = i + 1; j < ratios.length && j < i + lookbackPoints; j++) {
+        // Utiliser la même fenêtre pour la sortie (simplification)
+        const zj = windowStd > 0 ? (ratios[j] - windowMean) / windowStd : 0;
         if (Math.abs(zj) < 0.5) {
           reverts++;
+          totalDays += (j - i);
           break;
         }
       }
     }
   }
   const reversionRate = signals > 0 ? reverts / signals : 0;
+  const avgDaysToRevert = reverts > 0 ? Math.round(totalDays / reverts) : null;
 
-  return { mean, std, corr, reversionRate, lastRatio: ratios[ratios.length - 1] };
+  // Z-score actuel (sur fenêtre de 90 jours)
+  const lastRatio = ratios[ratios.length - 1];
+  const zScore = std > 0 ? (lastRatio - mean) / std : 0;
+
+  // Volatilité annualisée de chaque token
+  const volA = Math.sqrt(varA) * Math.sqrt(365) * 100;
+  const volB = Math.sqrt(varB) * Math.sqrt(365) * 100;
+  const avgVol = (volA + volB) / 2;
+
+  // Score de risque (1-10)
+  let riskScore;
+  if (avgVol < 50 && corr > 0.7) riskScore = 2;
+  else if (avgVol < 50) riskScore = 3;
+  else if (avgVol < 80 && corr > 0.6) riskScore = 4;
+  else if (avgVol < 80) riskScore = 5;
+  else if (avgVol < 120 && corr > 0.5) riskScore = 6;
+  else if (avgVol < 120) riskScore = 7;
+  else if (corr > 0.5) riskScore = 8;
+  else riskScore = 9;
+
+  return { mean, std, corr, reversionRate, avgDaysToRevert, lastRatio, zScore, volA, volB, riskScore };
 }
 
 export default async function handler(req, res) {
@@ -103,39 +157,54 @@ export default async function handler(req, res) {
     const now = Date.now();
     const startTime = now - 365 * 24 * 60 * 60 * 1000;
 
+    // D'abord, récupérer toutes les candles en parallèle (une seule fois par coin)
+    const uniqueCoins = [...new Set(coins)];
+    const candlesMap = {};
+
+    await Promise.all(
+      uniqueCoins.map(async (coin) => {
+        try {
+          const candles = await fetchCandles(coin, '1d', startTime, now);
+          candlesMap[coin] = candles.map((c) => ({ t: c.t, c: parseFloat(c.c) }));
+        } catch (e) {
+          // Coin non disponible sur Hyperliquid
+          candlesMap[coin] = null;
+        }
+      })
+    );
+
+    // Ensuite, calculer les stats pour chaque paire (pas d'appel API ici)
     const results = [];
     for (const pair of pairs) {
-      try {
-        const [ca, cb] = await Promise.all([
-          fetchCandles(pair.a, '1d', startTime, now),
-          fetchCandles(pair.b, '1d', startTime, now),
-        ]);
+      const seriesA = candlesMap[pair.a];
+      const seriesB = candlesMap[pair.b];
 
-        const seriesA = ca.map((c) => ({ t: c.t, c: parseFloat(c.c) }));
-        const seriesB = cb.map((c) => ({ t: c.t, c: parseFloat(c.c) }));
+      if (!seriesA || !seriesB) continue;
 
-        const stats = computeStatsRatio(seriesA, seriesB);
-        if (!stats) continue;
+      const stats = computeStatsRatio(seriesA, seriesB);
+      if (!stats) continue;
 
-        // Score : on veut corr élevée & bonne réversion à la moyenne
-        const corrScore = Math.max(0, (stats.corr + 1) / 2); // 0 → 1
-        const reversionScore = stats.reversionRate;          // 0 → 1
-        const globalScore = 0.6 * corrScore + 0.4 * reversionScore;
+      // Score : on veut corr élevée & bonne réversion à la moyenne
+      const corrScore = Math.max(0, (stats.corr + 1) / 2); // 0 → 1
+      const reversionScore = stats.reversionRate;          // 0 → 1
+      const globalScore = 0.6 * corrScore + 0.4 * reversionScore;
 
-        results.push({
-          pairId: `${pair.a}-${pair.b}`.toLowerCase(),
-          coinA: pair.a,
-          coinB: pair.b,
-          corr: stats.corr,
-          reversionRate: stats.reversionRate,
-          lastRatio: stats.lastRatio,
-          mean: stats.mean,
-          std: stats.std,
-          score: globalScore,
-        });
-      } catch (e) {
-        // ignore la paire si erreur
-      }
+      results.push({
+        pairId: `${pair.a}-${pair.b}`.toLowerCase(),
+        coinA: pair.a,
+        coinB: pair.b,
+        corr: stats.corr,
+        reversionRate: stats.reversionRate,
+        avgDaysToRevert: stats.avgDaysToRevert,
+        lastRatio: stats.lastRatio,
+        mean: stats.mean,
+        std: stats.std,
+        score: globalScore,
+        zScore: stats.zScore,
+        riskScore: stats.riskScore,
+        volA: stats.volA,
+        volB: stats.volB,
+      });
     }
 
     // tri des meilleures paires

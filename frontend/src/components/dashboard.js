@@ -9,7 +9,8 @@ export default function DashboardPage() {
   const [pairs, setPairs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [sortBy, setSortBy] = useState('signal'); // signal, risk, gain, corr
+  const [sortBy, setSortBy] = useState('signal'); // signal, risk, gain, corr, quality
+  const [showOnlyGood, setShowOnlyGood] = useState(false); // Filtre qualité >= 3 étoiles
 
   useEffect(() => {
     const run = async () => {
@@ -104,26 +105,27 @@ export default function DashboardPage() {
                 ))}
                 {loading && <span className="text-slate-400 ml-2">Scan en cours…</span>}
               </div>
-              <div className="flex items-center gap-2 mt-3 text-xs">
-                <span className="text-slate-500">Trier par :</span>
-                {[
-                  { id: 'signal', label: 'Signal actif' },
-                  { id: 'risk', label: 'Risque ↓' },
-                  { id: 'gain', label: 'Gain ↓' },
-                  { id: 'corr', label: 'Corrélation ↓' },
-                ].map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => setSortBy(s.id)}
-                    className={
-                      sortBy === s.id
-                        ? 'px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                        : 'px-2 py-1 rounded bg-slate-800 text-slate-400 hover:bg-slate-700'
-                    }
-                  >
-                    {s.label}
-                  </button>
-                ))}
+              <div className="flex flex-wrap items-center gap-2 mt-3 text-xs">
+                <button
+                  onClick={() => setShowOnlyGood(false)}
+                  className={
+                    !showOnlyGood
+                      ? 'px-3 py-1.5 rounded-lg bg-slate-700 text-slate-100 font-medium'
+                      : 'px-3 py-1.5 rounded-lg bg-slate-800 text-slate-400 hover:bg-slate-700'
+                  }
+                >
+                  Tous les signaux
+                </button>
+                <button
+                  onClick={() => setShowOnlyGood(true)}
+                  className={
+                    showOnlyGood
+                      ? 'px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 font-medium border border-emerald-500/30'
+                      : 'px-3 py-1.5 rounded-lg bg-slate-800 text-slate-400 hover:bg-slate-700'
+                  }
+                >
+                  TOP seulement
+                </button>
               </div>
               {error && <span className="text-xs text-red-400 mt-2 block">{error}</span>}
             </div>
@@ -161,13 +163,26 @@ export default function DashboardPage() {
                       return { ...p, gainPct, signal };
                     });
 
-                    const sortedPairs = [...pairsWithGain].sort((a, b) => {
+                    // Filtrer si "Bons trades" est activé (>= 3 étoiles sur 5)
+                    const filteredPairs = showOnlyGood
+                      ? pairsWithGain.filter(p => (p.qualityStars || 0) >= 3)
+                      : pairsWithGain;
+
+                    const sortedPairs = [...filteredPairs].sort((a, b) => {
                       const zA = Math.abs(a.zScore || 0);
                       const zB = Math.abs(b.zScore || 0);
                       const hasSignalA = zA > 1.5;
                       const hasSignalB = zB > 1.5;
 
                       switch (sortBy) {
+                        case 'quality':
+                          // Qualité décroissante, puis signaux actifs
+                          if ((b.qualityStars || 0) !== (a.qualityStars || 0)) {
+                            return (b.qualityStars || 0) - (a.qualityStars || 0);
+                          }
+                          if (hasSignalA && !hasSignalB) return -1;
+                          if (!hasSignalA && hasSignalB) return 1;
+                          return zB - zA;
                         case 'risk':
                           // Risque croissant (moins risqué en premier)
                           return (a.riskScore || 10) - (b.riskScore || 10);
@@ -202,12 +217,13 @@ export default function DashboardPage() {
                           <thead>
                             <tr className="text-slate-400 border-b border-slate-800 text-[10px] md:text-xs">
                               <th className="text-left py-2 pr-2 whitespace-nowrap">Paire</th>
+                              <th className="text-left py-2 pr-2 whitespace-nowrap w-20">Qualité</th>
                               <th className="text-left py-2 pr-2 whitespace-nowrap w-10">Z</th>
                               <th className="text-left py-2 pr-2 whitespace-nowrap w-14">Signal</th>
-                              <th className="text-left py-2 pr-2 whitespace-nowrap w-12">Risque</th>
-                              <th className="text-left py-2 pr-2 whitespace-nowrap hidden md:table-cell">Position</th>
+                              <th className="text-left py-2 pr-2 whitespace-nowrap w-14 hidden sm:table-cell" title="Taux de réussite historique">Win%</th>
+                              <th className="text-left py-2 pr-2 whitespace-nowrap w-14 hidden sm:table-cell" title="Gain moyen par trade">Avg</th>
+                              <th className="text-left py-2 pr-2 whitespace-nowrap w-14 hidden md:table-cell" title="Drawdown maximum historique">DD</th>
                               <th className="text-left py-2 pr-2 whitespace-nowrap w-14 hidden sm:table-cell">Gain</th>
-                              <th className="text-left py-2 pr-2 whitespace-nowrap w-10 hidden sm:table-cell">Durée</th>
                               <th className="text-left py-2 w-14"></th>
                             </tr>
                           </thead>
@@ -231,11 +247,23 @@ export default function DashboardPage() {
                               // Couleur du risque
                               const riskColor = (p.riskScore || 5) <= 4 ? 'text-emerald-400' : (p.riskScore || 5) <= 6 ? 'text-amber-400' : 'text-red-400';
 
+                              // Étoiles de qualité (0-5)
+                              const stars = p.qualityStars || 0;
+                              const starsColor = stars >= 4 ? 'text-emerald-400' : stars >= 2 ? 'text-slate-300' : 'text-slate-600';
+
+                              // Alertes pour trades dangereux
+                              const isDangerous = (p.avgReturn || 0) < 0 || (p.maxDrawdown || 0) > 40;
+
                               return (
-                                <tr key={p.pairId} className={`border-b border-slate-900/60 hover:bg-slate-800/50 ${rowBg} text-[10px] md:text-xs`}>
+                                <tr key={p.pairId} className={`border-b border-slate-900/60 hover:bg-slate-800/50 ${rowBg} ${isDangerous ? 'opacity-50' : ''} text-[10px] md:text-xs`}>
                                   <td className="py-2 pr-2 font-medium whitespace-nowrap">
                                     {isActive && <span className="inline-block w-2 h-2 rounded-full bg-amber-400 mr-1"></span>}
                                     {p.coinA}/{p.coinB}
+                                  </td>
+                                  <td className={`py-2 pr-2 whitespace-nowrap ${starsColor}`} title={`${stars}/5 étoiles`}>
+                                    {stars >= 4 && <span className="inline-block px-1 py-0.5 mr-1 text-[8px] font-bold bg-emerald-500 text-white rounded">TOP</span>}
+                                    {isDangerous && stars < 4 && <span className="inline-block px-1 py-0.5 mr-1 text-[8px] font-bold bg-red-500 text-white rounded">!</span>}
+                                    {'★'.repeat(stars)}{'☆'.repeat(5 - stars)}
                                   </td>
                                   <td className={`py-2 pr-2 font-medium whitespace-nowrap ${zColor}`}>
                                     {z.toFixed(2)}
@@ -243,17 +271,17 @@ export default function DashboardPage() {
                                   <td className={`py-2 pr-2 font-semibold whitespace-nowrap ${signalColor}`}>
                                     {signal}
                                   </td>
-                                  <td className={`py-2 pr-2 whitespace-nowrap ${riskColor}`}>
-                                    {p.riskScore || '—'}/10
+                                  <td className={`py-2 pr-2 whitespace-nowrap hidden sm:table-cell ${(p.winRate || 0) >= 0.7 ? 'text-emerald-400' : (p.winRate || 0) >= 0.5 ? 'text-slate-300' : 'text-red-400'}`}>
+                                    {p.winRate != null ? `${Math.round(p.winRate * 100)}%` : '—'}
                                   </td>
-                                  <td className="py-2 pr-2 text-slate-200 whitespace-nowrap hidden md:table-cell">
-                                    {isActive ? position : '—'}
+                                  <td className={`py-2 pr-2 whitespace-nowrap hidden sm:table-cell ${(p.avgReturn || 0) > 5 ? 'text-emerald-400' : (p.avgReturn || 0) > 0 ? 'text-slate-300' : 'text-red-400'}`}>
+                                    {p.avgReturn != null ? `${p.avgReturn > 0 ? '+' : ''}${p.avgReturn.toFixed(1)}%` : '—'}
+                                  </td>
+                                  <td className={`py-2 pr-2 whitespace-nowrap hidden md:table-cell ${(p.maxDrawdown || 0) <= 25 ? 'text-emerald-400' : (p.maxDrawdown || 0) <= 40 ? 'text-amber-400' : 'text-red-400'}`}>
+                                    {p.maxDrawdown != null ? `-${Math.round(p.maxDrawdown)}%` : '—'}
                                   </td>
                                   <td className={`py-2 pr-2 font-semibold whitespace-nowrap hidden sm:table-cell ${p.gainPct > 0 ? 'text-emerald-400' : 'text-slate-500'}`}>
                                     {isActive && p.gainPct ? `+${p.gainPct.toFixed(0)}%` : '—'}
-                                  </td>
-                                  <td className="py-2 pr-2 text-slate-300 whitespace-nowrap hidden sm:table-cell">
-                                    {isActive && p.avgDaysToRevert ? `~${p.avgDaysToRevert}j` : '—'}
                                   </td>
                                   <td className="py-2 whitespace-nowrap">
                                     <Link
@@ -285,16 +313,16 @@ export default function DashboardPage() {
               <h3 className="text-sm font-semibold mb-2 text-emerald-400">Comprendre le tableau</h3>
               <ul className="text-xs text-slate-300 space-y-2">
                 <li>
-                  <strong className="text-slate-100">Z-Score</strong><br/>
-                  Écart par rapport à la moyenne. |Z| {'>'} 1.5 = signal actif.
+                  <strong className="text-slate-100">Win%</strong><br/>
+                  Taux de réussite historique. <span className="text-emerald-400">{'>'} 70%</span> = excellent.
                 </li>
                 <li>
-                  <strong className="text-slate-100">Corrélation</strong><br/>
-                  De -1 à 1. Proche de 1 = les deux tokens bougent ensemble. C'est ce qu'on veut !
+                  <strong className="text-slate-100">Avg</strong><br/>
+                  Rendement moyen par trade. <span className="text-emerald-400">{'>'} 5%</span> = bon.
                 </li>
                 <li>
-                  <strong className="text-slate-100">Réversion</strong><br/>
-                  Pourcentage de fois où l'écart est revenu à la normale. Plus c'est haut, mieux c'est.
+                  <strong className="text-slate-100">DD (Drawdown)</strong><br/>
+                  Pire perte temporaire. <span className="text-emerald-400">{'<'} 25%</span> = faible risque.
                 </li>
               </ul>
             </div>
@@ -313,9 +341,31 @@ export default function DashboardPage() {
             </div>
 
             <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4">
-              <h3 className="text-sm font-semibold mb-2 text-amber-400">Conseil</h3>
+              <h3 className="text-sm font-semibold mb-2 text-emerald-400">Système de qualité ★</h3>
+              <p className="text-xs text-slate-300 leading-relaxed mb-2">
+                Score basé sur <strong>sûreté + rentabilité</strong> :
+              </p>
+              <ul className="text-xs text-slate-300 space-y-1">
+                <li><span className="text-emerald-400">★★</span> Rendement moyen {'>'} 5%</li>
+                <li><span className="text-emerald-400">★★</span> Winrate {'>'} 70%</li>
+                <li><span className="text-emerald-400">★</span> Drawdown {'<'} 30%</li>
+              </ul>
+              <p className="text-xs text-red-400 mt-2 mb-1">
+                Pénalités strictes :
+              </p>
+              <ul className="text-xs text-slate-400 space-y-1">
+                <li><span className="text-red-400">!</span> Avg négatif → max 1★</li>
+                <li><span className="text-red-400">!</span> DD {'>'} 50% → max 1★</li>
+              </ul>
+              <p className="text-xs text-slate-400 mt-2">
+                <span className="inline-block px-1 py-0.5 mr-1 text-[8px] font-bold bg-emerald-500 text-white rounded">TOP</span> = Trade recommandé (4+ étoiles)
+              </p>
+            </div>
+
+            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4">
+              <h3 className="text-sm font-semibold mb-2 text-emerald-400">Conseil</h3>
               <p className="text-xs text-slate-300 leading-relaxed">
-                Privilégiez les paires avec <strong>|Z| {'>'} 1.5</strong> (signal actif) et une <strong>corrélation forte</strong>.
+                Utilisez le filtre <strong>"★ Bons trades"</strong> pour n'afficher que les meilleures opportunités.
                 Évitez les memecoins pour débuter.
               </p>
             </div>

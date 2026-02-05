@@ -5,12 +5,22 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "start": "next start -H 0.0.0.0",
+    "lint": "eslint",
+    "bot": "node bot-worker.js",
+    "bot:status": "node bot-worker.js --status",
+    "bot:stop": "node bot-worker.js --stop",
+    "bot:reset": "node bot-worker.js --reset",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop all",
+    "pm2:restart": "pm2 restart all",
+    "pm2:logs": "pm2 logs",
+    "pm2:status": "pm2 status"
   },
   "dependencies": {
     "@rainbow-me/rainbowkit": "^2.2.10",
     "@tanstack/react-query": "^5.90.12",
+    "better-sqlite3": "^12.6.2",
     "chart.js": "^4.5.1",
     "chartjs-plugin-annotation": "^3.1.0",
     "next": "16.0.7",

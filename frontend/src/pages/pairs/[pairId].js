@@ -4,7 +4,6 @@ import Link from 'next/link';
 import PairChart from '@/components/PairChart';
 import SignalBadge from '@/components/ui/SignalBadge';
 import useWatchlist from '@/hooks/useWatchlist';
-import useTradeHistory from '@/hooks/useTradeHistory';
 
 export default function PairDetailPage() {
   const router = useRouter();
@@ -27,7 +26,6 @@ export default function PairDetailPage() {
   const [positionSize, setPositionSize] = useState(1000);
 
   const { toggleWatchlist, isInWatchlist } = useWatchlist();
-  const { addTrade } = useTradeHistory();
 
   useEffect(() => {
     const now = new Date();
@@ -113,21 +111,6 @@ export default function PairDetailPage() {
     : signal === 'LONG'
       ? `Long ${coinA} / Short ${coinB}`
       : '-';
-
-  const handleRecordTrade = () => {
-    if (!isActive) return;
-    const pnl = (gainPct / 100) * positionSize * (risk?.recommendedLeverage || 1);
-    addTrade({
-      pair: `${coinA}-${coinB}`,
-      type: signal,
-      entryPrice: currentRatio,
-      exitPrice: exitRatio,
-      pnl,
-      pnlPercent: gainPct * (risk?.recommendedLeverage || 1),
-      duration: 0,
-    });
-    alert('Trade enregistre dans l\'historique !');
-  };
 
   return (
     <div className="p-6">
@@ -261,13 +244,6 @@ export default function PairDetailPage() {
                     {signal === 'SHORT' ? '↑ LONG' : '↓ SHORT'} {coinB}
                   </a>
                 </div>
-
-                <button
-                  onClick={handleRecordTrade}
-                  className="w-full py-2 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-400 text-sm hover:bg-blue-500/20 transition-colors"
-                >
-                  Enregistrer ce trade dans l'historique
-                </button>
               </>
             ) : (
               <div className="text-center py-8">
@@ -375,7 +351,7 @@ export default function PairDetailPage() {
           <div className="card p-4 flex flex-wrap items-center gap-4 text-sm">
             <span className="text-gray-500">Parametres:</span>
             <label className="flex items-center gap-2">
-              <span className="text-gray-400">Z seuil</span>
+              <span className="text-gray-400">Z seuil entree</span>
               <input
                 type="number"
                 step="0.1"
@@ -385,14 +361,14 @@ export default function PairDetailPage() {
               />
             </label>
             <label className="flex items-center gap-2">
-              <span className="text-gray-400">Position</span>
+              <span className="text-gray-400">Z seuil sortie</span>
               <input
                 type="number"
-                value={positionSize}
-                onChange={(e) => setPositionSize(parseFloat(e.target.value))}
-                className="w-24 text-center"
+                step="0.1"
+                value={zExit}
+                onChange={(e) => setZExit(parseFloat(e.target.value))}
+                className="w-16 text-center"
               />
-              <span className="text-gray-600">USDC</span>
             </label>
           </div>
         </div>
@@ -433,6 +409,41 @@ export default function PairDetailPage() {
       {/* Backtest Tab */}
       {activeTab === 'backtest' && (
         <div className="space-y-6">
+          {/* Parametres Backtest */}
+          <div className="card p-4 flex flex-wrap items-center gap-4 text-sm">
+            <span className="text-gray-500">Parametres:</span>
+            <label className="flex items-center gap-2">
+              <span className="text-gray-400">Position</span>
+              <input
+                type="number"
+                value={positionSize}
+                onChange={(e) => setPositionSize(parseFloat(e.target.value))}
+                className="w-24 text-center"
+              />
+              <span className="text-gray-600">USDC</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <span className="text-gray-400">Z entree</span>
+              <input
+                type="number"
+                step="0.1"
+                value={zEnter}
+                onChange={(e) => setZEnter(parseFloat(e.target.value))}
+                className="w-16 text-center"
+              />
+            </label>
+            <label className="flex items-center gap-2">
+              <span className="text-gray-400">Z sortie</span>
+              <input
+                type="number"
+                step="0.1"
+                value={zExit}
+                onChange={(e) => setZExit(parseFloat(e.target.value))}
+                className="w-16 text-center"
+              />
+            </label>
+          </div>
+
           {/* Stats */}
           {backtest && (
             <div className="grid grid-cols-4 gap-4">

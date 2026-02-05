@@ -36,6 +36,13 @@ yarn-error.log*
 # vercel
 .vercel
 
+# PM2 logs
+/logs/*.log
+
+# SQLite database
+/data/*.db
+/data/*.db-journal
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

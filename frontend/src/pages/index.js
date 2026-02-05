@@ -6,14 +6,12 @@ import QualityStars from '@/components/ui/QualityStars';
 import ScoreBar from '@/components/ui/ScoreBar';
 import { sortByScore, calculateGlobalStats } from '@/lib/scoring';
 import useWatchlist from '@/hooks/useWatchlist';
-import useTradeHistory from '@/hooks/useTradeHistory';
 
 export default function DashboardPage() {
   const [pairs, setPairs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const { watchlist } = useWatchlist();
-  const { getStats } = useTradeHistory();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -39,7 +37,6 @@ export default function DashboardPage() {
   }, []);
 
   const globalStats = calculateGlobalStats(pairs);
-  const tradeStats = getStats();
   const topPairs = pairs.slice(0, 5);
   const activePairs = pairs.filter(p => Math.abs(p.zScore || 0) > 1.5).slice(0, 5);
 
@@ -226,36 +223,23 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* Mes Stats */}
+          {/* Mon Compte */}
           <div className="card p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Mes Stats</h3>
+            <h3 className="text-lg font-semibold text-white mb-4">Mon Compte</h3>
             <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400">Trades total</span>
-                <span className="font-medium text-white">{tradeStats.total}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400">Win Rate</span>
-                <span className={`font-medium ${tradeStats.winRate >= 50 ? 'text-green-400' : 'text-red-400'}`}>
-                  {tradeStats.winRate}%
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400">PnL Total</span>
-                <span className={`font-medium ${tradeStats.totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {tradeStats.totalPnl >= 0 ? '+' : ''}{tradeStats.totalPnl.toFixed(0)}$
-                </span>
-              </div>
               <div className="flex justify-between items-center">
                 <span className="text-gray-400">Watchlist</span>
                 <span className="font-medium text-white">{watchlist.length} paires</span>
               </div>
+              <p className="text-sm text-gray-500">
+                Connectez votre wallet pour voir vos positions et historique Hyperliquid.
+              </p>
             </div>
             <Link
-              href="/history"
+              href="/portfolio"
               className="mt-4 block text-center text-sm text-blue-400 hover:text-blue-300 transition-colors"
             >
-              Voir l'historique →
+              Voir mon portfolio →
             </Link>
           </div>
 
@@ -263,6 +247,15 @@ export default function DashboardPage() {
           <div className="card p-6">
             <h3 className="text-lg font-semibold text-white mb-4">Actions Rapides</h3>
             <div className="space-y-2">
+              <Link
+                href="/bot"
+                className="flex items-center gap-3 p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 hover:bg-green-500/20 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                <span className="font-medium">Bot Trading Auto</span>
+              </Link>
               <Link
                 href="/scanner"
                 className="flex items-center gap-3 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500/20 transition-colors"

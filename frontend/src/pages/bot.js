@@ -463,6 +463,155 @@ function ApiKeysConfig({ addLog, mode, onModeChange }) {
   );
 }
 
+// Composant d'optimisation des z-thresholds
+function OptimizationPanel({ addLog }) {
+  const [optimizedPairs, setOptimizedPairs] = useState([]);
+  const [optimizing, setOptimizing] = useState(false);
+  const [summary, setSummary] = useState({ total: 0, valid: 0 });
+
+  // Charger les paramètres optimisés
+  const loadOptimized = useCallback(async () => {
+    try {
+      const res = await fetch('/api/bot/optimize');
+      const data = await res.json();
+      if (data.success) {
+        setOptimizedPairs(data.params || []);
+        setSummary(data.summary || { total: 0, valid: 0 });
+      }
+    } catch (e) {
+      console.error('Failed to load optimized params:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadOptimized();
+  }, [loadOptimized]);
+
+  // Lancer l'optimisation de toutes les paires
+  const runOptimization = async () => {
+    setOptimizing(true);
+    addLog('Optimisation en cours... (peut prendre quelques minutes)', 'info');
+
+    try {
+      const res = await fetch('/api/bot/optimize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'optimize-all' }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        addLog(`Optimisation terminee: ${data.optimized} paires optimisees`, 'success');
+        await loadOptimized();
+      } else {
+        addLog('Optimisation: ' + (data.error || 'Erreur'), 'error');
+      }
+    } catch (e) {
+      addLog('Optimisation: Erreur - ' + e.message, 'error');
+    }
+
+    setOptimizing(false);
+  };
+
+  // Nettoyer les paramètres expirés
+  const cleanExpired = async () => {
+    try {
+      const res = await fetch('/api/bot/optimize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'clean' }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        addLog(data.message, 'info');
+        await loadOptimized();
+      }
+    } catch (e) {
+      addLog('Erreur nettoyage: ' + e.message, 'error');
+    }
+  };
+
+  const validPairs = optimizedPairs.filter(p => !p.isExpired);
+
+  return (
+    <div className="card p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+          <svg className="w-5 h-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          Z-Thresholds Optimises
+        </h2>
+        <span className="text-xs px-2 py-1 bg-purple-500/20 text-purple-400 rounded">
+          {summary.valid} actifs
+        </span>
+      </div>
+
+      <div className="space-y-3">
+        {/* Boutons d'action */}
+        <div className="flex gap-2">
+          <button
+            onClick={runOptimization}
+            disabled={optimizing}
+            className="flex-1 py-2 bg-purple-500/20 border border-purple-500/30 text-purple-400 rounded-lg text-sm hover:bg-purple-500/30 disabled:opacity-50 transition-colors"
+          >
+            {optimizing ? 'Optimisation...' : 'Optimiser tout'}
+          </button>
+          <button
+            onClick={cleanExpired}
+            className="px-3 py-2 bg-[#1f1f23] rounded-lg text-gray-400 text-sm hover:text-white hover:bg-[#2a2a2e] transition-colors"
+            title="Nettoyer les expires"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Liste des paires optimisées */}
+        {validPairs.length === 0 ? (
+          <div className="text-center py-6">
+            <p className="text-gray-500 text-sm">Aucune paire optimisee</p>
+            <p className="text-gray-600 text-xs mt-1">Lancez l'optimisation pour trouver les meilleurs seuils</p>
+          </div>
+        ) : (
+          <div className="space-y-2 max-h-[200px] overflow-y-auto">
+            {validPairs.slice(0, 10).map(pair => (
+              <div
+                key={pair.pairId}
+                className="flex items-center justify-between p-2 rounded-lg bg-[#151518] border border-[#1f1f23]"
+              >
+                <div>
+                  <span className="font-medium text-white text-sm">{pair.pairId.toUpperCase()}</span>
+                  <div className="flex gap-2 text-xs text-gray-500 mt-0.5">
+                    <span>Entry: {pair.zEntry}</span>
+                    <span>Exit: {pair.zExit}</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className={`text-sm font-medium ${pair.avgReturn >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {pair.avgReturn >= 0 ? '+' : ''}{pair.avgReturn?.toFixed(1)}%
+                  </span>
+                  <div className="text-xs text-gray-500">
+                    WR: {(pair.winRate * 100)?.toFixed(0)}%
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <p className="text-xs text-gray-600 pt-2">
+          L'optimisation teste differentes combinaisons de z-entry/z-exit
+          sur 1 an de donnees historiques pour chaque paire.
+          Les parametres expirent apres 7 jours.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function BotPage() {
   const [status, setStatus] = useState(null);
   const [opportunities, setOpportunities] = useState([]);
@@ -899,6 +1048,9 @@ export default function BotPage() {
             mode={config.mode}
             onModeChange={(newMode) => setConfig(prev => ({ ...prev, mode: newMode }))}
           />
+
+          {/* Optimisation */}
+          <OptimizationPanel addLog={addLog} />
         </div>
 
         {/* Colonne 2: Positions + Opportunites */}

@@ -137,6 +137,22 @@ function initTables() {
     )
   `);
 
+  // Table des paramètres optimisés par paire
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS optimized_params (
+      pair_id TEXT PRIMARY KEY,
+      coin_a TEXT NOT NULL,
+      coin_b TEXT NOT NULL,
+      z_entry REAL NOT NULL,
+      z_exit REAL NOT NULL,
+      win_rate REAL,
+      avg_return REAL,
+      score REAL,
+      optimized_at INTEGER,
+      expires_at INTEGER
+    )
+  `);
+
   // Table du worker (heartbeat)
   db.exec(`
     CREATE TABLE IF NOT EXISTS worker_status (
@@ -640,6 +656,102 @@ function getWorkerStatus() {
   };
 }
 
+// ============ OPTIMIZED PARAMS ============
+
+/**
+ * Récupère les paramètres optimisés pour une paire
+ */
+function getOptimizedParams(pairId) {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM optimized_params WHERE pair_id = ?').get(pairId);
+
+  if (!row) return null;
+
+  return {
+    pairId: row.pair_id,
+    coinA: row.coin_a,
+    coinB: row.coin_b,
+    zEntry: row.z_entry,
+    zExit: row.z_exit,
+    winRate: row.win_rate,
+    avgReturn: row.avg_return,
+    score: row.score,
+    optimizedAt: row.optimized_at,
+    expiresAt: row.expires_at,
+    isExpired: Date.now() > row.expires_at,
+  };
+}
+
+/**
+ * Sauvegarde les paramètres optimisés pour une paire
+ */
+function setOptimizedParams(params) {
+  const db = getDb();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO optimized_params (
+      pair_id, coin_a, coin_b, z_entry, z_exit,
+      win_rate, avg_return, score, optimized_at, expires_at
+    ) VALUES (
+      @pairId, @coinA, @coinB, @zEntry, @zExit,
+      @winRate, @avgReturn, @score, @optimizedAt, @expiresAt
+    )
+  `);
+
+  stmt.run({
+    pairId: params.pairId,
+    coinA: params.coinA,
+    coinB: params.coinB,
+    zEntry: params.zEntry,
+    zExit: params.zExit,
+    winRate: params.winRate || null,
+    avgReturn: params.avgReturn || null,
+    score: params.score || null,
+    optimizedAt: params.optimizedAt || Date.now(),
+    expiresAt: params.expiresAt || Date.now() + 7 * 24 * 60 * 60 * 1000,
+  });
+
+  return getOptimizedParams(params.pairId);
+}
+
+/**
+ * Récupère tous les paramètres optimisés
+ */
+function getAllOptimizedParams() {
+  const db = getDb();
+  const rows = db.prepare('SELECT * FROM optimized_params ORDER BY score DESC').all();
+
+  return rows.map(row => ({
+    pairId: row.pair_id,
+    coinA: row.coin_a,
+    coinB: row.coin_b,
+    zEntry: row.z_entry,
+    zExit: row.z_exit,
+    winRate: row.win_rate,
+    avgReturn: row.avg_return,
+    score: row.score,
+    optimizedAt: row.optimized_at,
+    expiresAt: row.expires_at,
+    isExpired: Date.now() > row.expires_at,
+  }));
+}
+
+/**
+ * Supprime les paramètres optimisés d'une paire
+ */
+function deleteOptimizedParams(pairId) {
+  const db = getDb();
+  db.prepare('DELETE FROM optimized_params WHERE pair_id = ?').run(pairId);
+}
+
+/**
+ * Nettoie les paramètres expirés
+ */
+function cleanExpiredParams() {
+  const db = getDb();
+  const result = db.prepare('DELETE FROM optimized_params WHERE expires_at < ?').run(Date.now());
+  return result.changes;
+}
+
 /**
  * Ferme la connexion à la base de données
  */
@@ -678,6 +790,12 @@ module.exports = {
   setWorkerStarted,
   setWorkerStopped,
   getWorkerStatus,
+  // Optimized params
+  getOptimizedParams,
+  setOptimizedParams,
+  getAllOptimizedParams,
+  deleteOptimizedParams,
+  cleanExpiredParams,
   // Utils
   close,
 };

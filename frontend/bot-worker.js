@@ -245,6 +245,15 @@ async function scanOpportunities(config) {
     })
   );
 
+  // Récupérer tous les paramètres optimisés
+  const allOptimizedParams = botDb.getAllOptimizedParams();
+  const optimizedMap = {};
+  for (const p of allOptimizedParams) {
+    if (!p.isExpired) {
+      optimizedMap[p.pairId] = p;
+    }
+  }
+
   // Générer et analyser les paires
   const pairs = generatePairs(coinsArray);
 
@@ -260,21 +269,34 @@ async function scanOpportunities(config) {
     if (stats.qualityStars < config.minQualityStars) continue;
     if (stats.winRate < config.minWinRate) continue;
 
+    const pairId = `${pair.a}-${pair.b}`.toLowerCase();
     const absZ = Math.abs(stats.zScore);
-    if (absZ < config.zEntryThreshold) continue;
+
+    // Utiliser les paramètres optimisés si disponibles, sinon les valeurs par défaut
+    const optimized = optimizedMap[pairId];
+    const zEntryThreshold = optimized?.zEntry || config.zEntryThreshold;
+    const zExitThreshold = optimized?.zExit || config.zExitThreshold;
+
+    if (absZ < zEntryThreshold) continue;
 
     const signal = stats.zScore > 0 ? 'SHORT' : 'LONG';
 
+    // Bonus de score si paramètres optimisés
+    const optimizedBonus = optimized ? 10 : 0;
+
     opportunities.push({
-      pairId: `${pair.a}-${pair.b}`.toLowerCase(),
+      pairId,
       coinA: pair.a,
       coinB: pair.b,
       signal,
       zScore: stats.zScore,
+      zEntryThreshold, // Seuil utilisé (optimisé ou par défaut)
+      zExitThreshold,
+      isOptimized: !!optimized,
       qualityStars: stats.qualityStars,
       winRate: stats.winRate,
       avgReturn: stats.avgReturn,
-      score: stats.qualityStars * 20 + absZ * 10 + stats.winRate * 15,
+      score: stats.qualityStars * 20 + absZ * 10 + stats.winRate * 15 + optimizedBonus,
     });
   }
 
@@ -497,6 +519,8 @@ async function openPaperSpread(pair, signal, sizeUSD) {
     },
     entryRatio: priceA / priceB,
     entryZScore: pair.zScore,
+    zExitThreshold: pair.zExitThreshold || 0.5, // Seuil de sortie (optimisé ou par défaut)
+    isOptimized: pair.isOptimized || false,
     entryTime: Date.now(),
     currentPnL: 0,
     mode: 'paper',
@@ -563,10 +587,51 @@ async function checkExitConditions(spread, config) {
     return { shouldExit: true, reason: 'Stop loss triggered' };
   }
 
-  // Vérifier z-score (requiert nouveau scan - simplifié ici)
-  if (Math.abs(spread.currentPnL / spread.sizeUSD) > 0.05 && spread.currentPnL > 0) {
-    // Take profit si gain > 5%
-    return { shouldExit: true, reason: 'Take profit (5%)' };
+  // Calculer le z-score actuel pour vérifier si on doit sortir
+  try {
+    const now = Date.now();
+    const startTime = now - 90 * 24 * 60 * 60 * 1000;
+
+    const [candlesA, candlesB] = await Promise.all([
+      fetchCandles(spread.coinA, '1d', startTime, now),
+      fetchCandles(spread.coinB, '1d', startTime, now),
+    ]);
+
+    if (candlesA.length > 20 && candlesB.length > 20) {
+      const seriesA = candlesA.map(c => ({ t: c.t, c: parseFloat(c.c) }));
+      const seriesB = candlesB.map(c => ({ t: c.t, c: parseFloat(c.c) }));
+
+      const stats = computeStatsRatio(seriesA, seriesB);
+
+      if (stats) {
+        const currentZ = Math.abs(stats.zScore);
+        const zExitThreshold = spread.zExitThreshold || config.zExitThreshold || 0.5;
+
+        // Sortir si le z-score est revenu vers la moyenne (mean reversion réussie)
+        if (currentZ < zExitThreshold && spread.currentPnL > 0) {
+          const optimizedTag = spread.isOptimized ? ' [OPT]' : '';
+          return {
+            shouldExit: true,
+            reason: `Mean reversion (z=${currentZ.toFixed(2)} < ${zExitThreshold})${optimizedTag}`,
+          };
+        }
+      }
+    }
+  } catch (e) {
+    // En cas d'erreur, on ne ferme pas automatiquement
+    log('warn', `Exit check error for ${spread.pairId}: ${e.message}`);
+  }
+
+  // Take profit si gain > 8% (safety)
+  if (pnlPercent > 8) {
+    return { shouldExit: true, reason: 'Take profit (8%)' };
+  }
+
+  // Max holding time: 7 jours
+  const holdingTime = Date.now() - spread.entryTime;
+  const maxHoldingTime = 7 * 24 * 60 * 60 * 1000;
+  if (holdingTime > maxHoldingTime) {
+    return { shouldExit: true, reason: 'Max holding time (7d)' };
   }
 
   return { shouldExit: false };

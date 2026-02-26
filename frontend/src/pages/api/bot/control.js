@@ -7,13 +7,20 @@ import {
   resetBot,
   closePaperSpread,
 } from '../../../lib/bot-engine';
+import { botControlSchema, validateBody } from '../../../lib/validation';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { action, ...params } = req.body;
+  // Validation des données
+  const validation = validateBody(botControlSchema, req.body);
+  if (!validation.success) {
+    return res.status(400).json({ error: validation.error });
+  }
+
+  const { action, ...params } = validation.data;
 
   try {
     let result;

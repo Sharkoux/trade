@@ -1,0 +1,84 @@
+# Docker Compose pour SpreadLab
+# Usage:
+#   docker-compose up -d          # Démarrer tous les services
+#   docker-compose up -d web      # Démarrer uniquement le web
+#   docker-compose logs -f        # Voir les logs
+#   docker-compose down           # Arrêter tous les services
+
+version: '3.8'
+
+services:
+  # ============ Application Web ============
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: spreadlab-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOST=0.0.0.0
+      # Clé de chiffrement (générer avec: openssl rand -hex 32)
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+    volumes:
+      # Persistance des données SQLite
+      - ./data:/app/data
+      # Persistance de la clé de chiffrement
+      - ./data/.encryption_key:/app/data/.encryption_key
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/bot/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - spreadlab-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ============ Bot Worker (24/7) ============
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    container_name: spreadlab-bot
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=production
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+    volumes:
+      # Partage de la base de données avec le service web
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      - spreadlab-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    # Limite de ressources (ajuster selon votre machine)
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+
+networks:
+  spreadlab-network:
+    driver: bridge
+
+# Volumes nommés pour la persistance
+volumes:
+  spreadlab-data:
+    driver: local

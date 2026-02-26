@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"B:\\trade\\trade\" log --oneline -10)"
+    ]
+  }
+}

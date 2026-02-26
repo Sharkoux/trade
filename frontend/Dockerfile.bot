@@ -1,0 +1,43 @@
+# Dockerfile pour le bot worker uniquement
+# Utilisé pour le déploiement du bot en tant que service séparé
+
+FROM node:20-alpine AS deps
+WORKDIR /app
+
+# Installer les dépendances pour la compilation de better-sqlite3
+RUN apk add --no-cache python3 make g++ libc6-compat
+
+COPY package.json package-lock.json* ./
+
+# Installer seulement les dépendances nécessaires au bot
+RUN npm ci --legacy-peer-deps --omit=dev || npm install --legacy-peer-deps --omit=dev
+
+# ============ Runner ============
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+RUN apk add --no-cache libc6-compat
+
+# Créer un utilisateur non-root
+RUN addgroup --system --gid 1001 botuser
+RUN adduser --system --uid 1001 botuser
+
+ENV NODE_ENV=production
+
+# Copier les fichiers du bot
+COPY --from=deps /app/node_modules ./node_modules
+COPY bot-worker.js ./
+COPY src/lib ./src/lib
+COPY package.json ./
+
+# Créer les dossiers de données
+RUN mkdir -p /app/data /app/logs
+RUN chown -R botuser:botuser /app
+
+USER botuser
+
+# Health check via fichier heartbeat
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+  CMD node -e "const db=require('./src/lib/bot-db');const s=db.getWorkerStatus();process.exit(s.isRunning?0:1)" || exit 1
+
+CMD ["node", "bot-worker.js"]

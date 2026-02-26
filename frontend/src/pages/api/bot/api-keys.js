@@ -1,4 +1,6 @@
 // API Route: Configuration des API Keys Hyperliquid
+import { apiKeysSchema, validateBody } from '../../../lib/validation';
+
 let botDb;
 let hlApi;
 
@@ -34,7 +36,13 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
-    const { action, apiKey, apiSecret, walletAddress } = req.body;
+    // Validation des données
+    const validation = validateBody(apiKeysSchema, req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: validation.error });
+    }
+
+    const { action, apiKey, apiSecret, walletAddress, mode } = validation.data;
 
     try {
       switch (action) {
@@ -69,17 +77,10 @@ export default async function handler(req, res) {
         }
 
         case 'configure': {
-          // Sauvegarder les clés API
+          // Sauvegarder les clés API (validation déjà faite par zod)
           if (!apiKey || !apiSecret || !walletAddress) {
             return res.status(400).json({
               error: 'apiKey, apiSecret et walletAddress requis'
-            });
-          }
-
-          // Valider le format de l'adresse wallet
-          if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
-            return res.status(400).json({
-              error: 'Format d\'adresse wallet invalide'
             });
           }
 
@@ -113,11 +114,9 @@ export default async function handler(req, res) {
         }
 
         case 'set-mode': {
-          // Changer le mode (paper/live)
-          const { mode } = req.body;
-
-          if (!['paper', 'live'].includes(mode)) {
-            return res.status(400).json({ error: 'Mode invalide (paper ou live)' });
+          // Changer le mode (paper/live) - validation déjà faite par zod
+          if (!mode) {
+            return res.status(400).json({ error: 'Mode requis' });
           }
 
           // Vérifier que les clés sont configurées pour le mode live

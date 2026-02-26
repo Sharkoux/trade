@@ -7,6 +7,9 @@
     "build": "next build",
     "start": "next start -H 0.0.0.0",
     "lint": "eslint",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "bot": "node bot-worker.js",
     "bot:status": "node bot-worker.js --status",
     "bot:stop": "node bot-worker.js --stop",
@@ -28,12 +31,15 @@
     "react-chartjs-2": "^5.3.1",
     "react-dom": "19.2.0",
     "viem": "^2.41.2",
-    "wagmi": "^3.1.0"
+    "wagmi": "^3.1.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@vitest/coverage-v8": "^2.1.0",
     "eslint": "^9",
     "eslint-config-next": "16.0.7",
-    "tailwindcss": "^4"
+    "tailwindcss": "^4",
+    "vitest": "^2.1.0"
   }
 }

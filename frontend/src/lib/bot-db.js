@@ -1,6 +1,7 @@
 // Module de persistence SQLite pour le bot de trading
 const Database = require('better-sqlite3');
 const path = require('path');
+const { encrypt, decrypt } = require('./crypto');
 
 // Chemin de la base de données
 const DB_PATH = process.env.BOT_DB_PATH || path.join(process.cwd(), 'data', 'bot.db');
@@ -166,6 +167,57 @@ function initTables() {
     )
   `);
 
+  // ============ INDEX POUR PERFORMANCES ============
+
+  // Index sur l'historique des trades (requêtes fréquentes par date)
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_trade_history_exit_time
+    ON trade_history(exit_time DESC)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_trade_history_pair_id
+    ON trade_history(pair_id)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_trade_history_mode
+    ON trade_history(mode)
+  `);
+
+  // Index sur les positions ouvertes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_open_spreads_entry_time
+    ON open_spreads(entry_time ASC)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_open_spreads_pair_id
+    ON open_spreads(pair_id)
+  `);
+
+  // Index sur les logs (requêtes par timestamp)
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_bot_logs_timestamp
+    ON bot_logs(timestamp DESC)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_bot_logs_level
+    ON bot_logs(level)
+  `);
+
+  // Index sur les paramètres optimisés
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_optimized_params_expires
+    ON optimized_params(expires_at)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_optimized_params_score
+    ON optimized_params(score DESC)
+  `);
+
   const workerExists = db.prepare('SELECT COUNT(*) as count FROM worker_status').get();
   if (workerExists.count === 0) {
     db.prepare("INSERT INTO worker_status (id, status) VALUES (1, 'stopped')").run();
@@ -204,10 +256,10 @@ function getConfig() {
     stopLossPercent: row.stop_loss_percent,
     activeUniverses: JSON.parse(row.active_universes),
     telegramEnabled: row.telegram_enabled === 1,
-    telegramBotToken: row.telegram_bot_token,
+    telegramBotToken: decrypt(row.telegram_bot_token),
     telegramChatId: row.telegram_chat_id,
-    apiKey: row.api_key,
-    apiSecret: row.api_secret,
+    apiKey: decrypt(row.api_key),
+    apiSecret: decrypt(row.api_secret),
     walletAddress: row.wallet_address,
   };
 }
@@ -251,10 +303,10 @@ function updateConfig(config) {
     stopLossPercent: config.stopLossPercent || null,
     activeUniverses: config.activeUniverses ? JSON.stringify(config.activeUniverses) : null,
     telegramEnabled: config.telegramEnabled !== undefined ? (config.telegramEnabled ? 1 : 0) : null,
-    telegramBotToken: config.telegramBotToken !== undefined ? config.telegramBotToken : null,
+    telegramBotToken: config.telegramBotToken !== undefined ? encrypt(config.telegramBotToken) : null,
     telegramChatId: config.telegramChatId !== undefined ? config.telegramChatId : null,
-    apiKey: config.apiKey !== undefined ? config.apiKey : null,
-    apiSecret: config.apiSecret !== undefined ? config.apiSecret : null,
+    apiKey: config.apiKey !== undefined ? encrypt(config.apiKey) : null,
+    apiSecret: config.apiSecret !== undefined ? encrypt(config.apiSecret) : null,
     walletAddress: config.walletAddress !== undefined ? config.walletAddress : null,
     updatedAt: Date.now(),
   });

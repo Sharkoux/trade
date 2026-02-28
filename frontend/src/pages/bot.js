@@ -906,9 +906,15 @@ export default function BotPage() {
                 {running ? 'ARRETER' : 'DEMARRER'}
               </button>
               <button
-                onClick={() => controlBot('reset', { initialBalance: 1000 })}
-                className="px-4 py-3 bg-[#1f1f23] rounded-lg text-gray-400 hover:text-white hover:bg-[#2a2a2e] transition-colors"
-                title="Reset le bot"
+                onClick={() => {
+                  if (confirm('Remettre la balance a 1000 USDC et effacer tout l\'historique ?')) {
+                    controlBot('reset', { initialBalance: 1000 });
+                    addLog('Balance et historique reinitialises', 'warning');
+                  }
+                }}
+                disabled={running}
+                className="px-4 py-3 bg-[#1f1f23] rounded-lg text-gray-400 hover:text-white hover:bg-[#2a2a2e] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Reset balance et historique"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />

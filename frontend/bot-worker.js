@@ -529,9 +529,9 @@ async function openPaperSpread(pair, signal, sizeUSD) {
   // Sauvegarder en DB
   botDb.addOpenSpread(spread);
 
-  // Mettre à jour le solde (frais simulés)
+  // Mettre à jour le solde (capital bloqué + frais simulés)
   const stats = botDb.getStats();
-  botDb.updateStats({ paperBalance: stats.paperBalance - sizeUSD * 0.001 });
+  botDb.updateStats({ paperBalance: stats.paperBalance - sizeUSD - sizeUSD * 0.001 });
 
   // Notification Telegram
   const config = botDb.getConfig();

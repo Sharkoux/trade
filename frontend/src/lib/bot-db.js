@@ -388,6 +388,9 @@ function resetStats(initialBalance = 1000) {
   // Supprimer les positions ouvertes
   db.prepare('DELETE FROM open_spreads').run();
 
+  // Supprimer l'historique des trades
+  db.prepare('DELETE FROM trade_history').run();
+
   return getStats();
 }
 

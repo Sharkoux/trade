@@ -18,7 +18,6 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - HOST=0.0.0.0
       # Clé de chiffrement (générer avec: openssl rand -hex 32)
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
     volumes:

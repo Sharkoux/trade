@@ -44,7 +44,6 @@ RUN adduser --system --uid 1001 nextjs
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
-ENV HOST=0.0.0.0
 
 # Copier les fichiers nécessaires
 COPY --from=builder /app/public ./public
@@ -74,7 +73,8 @@ EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/bot/status || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
 
 # Commande par défaut (serveur web)
-CMD ["node", "server.js"]
+# Force HOSTNAME=0.0.0.0 au runtime car Docker écrase cette variable
+CMD ["sh", "-c", "HOSTNAME=0.0.0.0 node server.js"]
